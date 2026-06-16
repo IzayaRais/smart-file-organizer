@@ -19,6 +19,10 @@ import argparse
 import mimetypes
 from pathlib import Path
 from collections import defaultdict
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+import urllib.parse
+import threading
+import webbrowser
 
 # Force sys.stdout and sys.stderr to UTF-8 to prevent UnicodeEncodeError on Windows console
 try:
@@ -569,28 +573,45 @@ def save_history(root: Path, method: str, moves: list, empty_folders: list, recy
     except Exception as exc:
         warn(f"Could not save history for undo: {exc}")
 
-def execute_undo(root: Path) -> bool:
+def execute_undo(root: Path, log: list = None) -> bool:
     """Roll back the most recent organization operation."""
+    def log_line(msg, msg_type="info"):
+        if msg_type == "info":
+            info(msg)
+            if log is not None: log.append(f"  {msg}")
+        elif msg_type == "step":
+            step(msg)
+            if log is not None: log.append(f"► {msg}")
+        elif msg_type == "ok":
+            ok(msg)
+            if log is not None: log.append(f"✔ {msg}")
+        elif msg_type == "warn":
+            warn(msg)
+            if log is not None: log.append(f"⚠ {msg}")
+        elif msg_type == "err":
+            err(msg)
+            if log is not None: log.append(f"✘ {msg}")
+
     history_path = root / ".organizer_history.json"
     if not history_path.exists():
-        err(f"No history file found at {history_path}. Cannot undo.")
+        log_line(f"No history file found at {history_path}. Cannot undo.", "err")
         return False
         
     try:
         with open(history_path, "r", encoding="utf-8") as f:
             history_data = json.load(f)
     except Exception as exc:
-        err(f"Failed to read history file: {exc}")
+        log_line(f"Failed to read history file: {exc}", "err")
         return False
         
     if not history_data or not isinstance(history_data, list):
-        err("History is empty or invalid.")
+        log_line("History is empty or invalid.", "err")
         return False
         
     # Get the last run
     last_run = history_data.pop()
     
-    step(f"Reversing run from {last_run.get('timestamp', 'unknown time')}...")
+    log_line(f"Reversing run from {last_run.get('timestamp', 'unknown time')}...", "step")
     
     # Reversing moves (dst -> src)
     moves = last_run.get("moves", [])
@@ -603,17 +624,17 @@ def execute_undo(root: Path) -> bool:
         dst = Path(move["dst"])
         
         if not dst.exists():
-            warn(f"File to restore does not exist at destination: {dst}")
+            log_line(f"File to restore does not exist at destination: {dst}", "warn")
             fail_moves += 1
             continue
             
         try:
             src.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(dst), str(src))
-            info(f"  Restored: {dst.name} → {src}")
+            log_line(f"Restored: {dst.name} → {src}", "info")
             success_moves += 1
         except Exception as exc:
-            warn(f"Failed to restore {dst.name} to {src}: {exc}")
+            log_line(f"Failed to restore {dst.name} to {src}: {exc}", "warn")
             fail_moves += 1
             
     # Reversing empty folders (dst -> src)
@@ -626,19 +647,19 @@ def execute_undo(root: Path) -> bool:
             try:
                 src.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(dst), str(src))
-                info(f"  Restored folder: {dst.name} → {src}")
+                log_line(f"Restored folder: {dst.name} → {src}", "info")
                 success_folders += 1
             except Exception as exc:
-                warn(f"Failed to restore folder {dst.name}: {exc}")
+                log_line(f"Failed to restore folder {dst.name}: {exc}", "warn")
                 
     # Duplicates warning
     recycled = last_run.get("recycled", [])
     if recycled:
-        warn(f"{len(recycled)} duplicate file(s) were sent to the Recycle Bin/deleted.")
-        warn("  These cannot be automatically restored by this script.")
-        warn("  Please restore them manually from the Windows Recycle Bin if needed.")
+        log_line(f"{len(recycled)} duplicate file(s) were sent to the Recycle Bin/deleted.", "warn")
+        log_line("These cannot be automatically restored by this script.", "warn")
+        log_line("Please restore them manually from the Windows Recycle Bin if needed.", "warn")
         for r in recycled:
-            info(f"    - {Path(r).name}")
+            log_line(f"  - {Path(r).name}", "info")
             
     # Clean up empty managed folders left behind
     cleanup_empty_folders_after_undo(root)
@@ -651,11 +672,11 @@ def execute_undo(root: Path) -> bool:
         else:
             history_path.unlink(missing_ok=True)
     except Exception as exc:
-        warn(f"Failed to update history file: {exc}")
+        log_line(f"Failed to update history file: {exc}", "warn")
         
-    ok(f"Undo completed: {success_moves} file(s) and {success_folders} folder(s) restored.")
+    log_line(f"Undo completed: {success_moves} file(s) and {success_folders} folder(s) restored.", "ok")
     if fail_moves > 0:
-        warn(f"Failed to restore {fail_moves} file(s).")
+        log_line(f"Failed to restore {fail_moves} file(s).", "warn")
     return True
 
 def cleanup_empty_folders_after_undo(root: Path):
@@ -758,6 +779,208 @@ def write_log(root: Path, log_lines: list, stats: dict):
 
 
 # ──────────────────────────────────────────────────────────────
+# SECTION 13.5 ▸ LOCAL WEB GUI SERVER
+# ──────────────────────────────────────────────────────────────
+
+class GUIRequestHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Prevent default console prints from HTTP server requests to keep terminal clean
+        pass
+
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        path = url.path
+        query = urllib.parse.parse_qs(url.query)
+        
+        if path == "/":
+            gui_path = Path(__file__).resolve().parent / "gui.html"
+            if gui_path.exists():
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                with open(gui_path, "rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_error(404, "gui.html file not found next to organizer.py")
+            return
+            
+        elif path == "/api/history":
+            target_path = query.get("path", [""])[0]
+            if not target_path:
+                self.send_json({"error": "Path parameter is missing"}, 400)
+                return
+            p = Path(target_path).expanduser().resolve()
+            history_path = p / ".organizer_history.json"
+            if history_path.exists() and history_path.is_file():
+                try:
+                    with open(history_path, "r", encoding="utf-8") as f:
+                        history_data = json.load(f)
+                    if isinstance(history_data, list) and len(history_data) > 0:
+                        last_run = history_data[-1]
+                        self.send_json({
+                            "history_available": True,
+                            "last_run_time": last_run.get("timestamp", "unknown")
+                        })
+                        return
+                except Exception:
+                    pass
+            self.send_json({"history_available": False})
+            return
+            
+        super().do_GET()
+
+    def do_POST(self):
+        url = urllib.parse.urlparse(self.path)
+        path = url.path
+        
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        try:
+            params = json.loads(post_data.decode('utf-8')) if post_data else {}
+        except Exception:
+            self.send_json({"error": "Invalid JSON body"}, 400)
+            return
+
+        if path == "/api/scan":
+            target_path = params.get("path")
+            if not target_path:
+                self.send_json({"error": "Directory path is required"}, 400)
+                return
+                
+            p = Path(target_path).expanduser().resolve()
+            if not p.is_dir():
+                self.send_json({"error": f"Folder path not found: {target_path}"}, 400)
+                return
+                
+            try:
+                all_files = collect_files(p)
+                keepers, duplicates, zero_byte = detect_duplicates(all_files)
+                
+                self.send_json({
+                    "total": len(all_files),
+                    "keepers_count": len(keepers),
+                    "duplicates_count": len(duplicates),
+                    "zero_byte_count": len(zero_byte)
+                })
+            except Exception as exc:
+                self.send_json({"error": f"Failed to scan directory: {exc}"}, 500)
+            return
+            
+        elif path == "/api/organize":
+            target_path = params.get("path")
+            method = params.get("method", "type")
+            dry_run = params.get("dry_run", True)
+            
+            if not target_path:
+                self.send_json({"error": "Directory path is required"}, 400)
+                return
+                
+            p = Path(target_path).expanduser().resolve()
+            if not p.is_dir():
+                self.send_json({"error": f"Folder path not found: {target_path}"}, 400)
+                return
+                
+            try:
+                all_files = collect_files(p)
+                keepers, duplicates, zero_byte = detect_duplicates(all_files)
+                move_plan = build_move_plan(keepers, zero_byte, p, method)
+                
+                if dry_run:
+                    self.send_json({
+                        "move_plan": [{"name": m["src"].name, "cat": m["cat"], "size": m["src"].stat().st_size, "dst": str(m["dst"])} for m in move_plan],
+                        "duplicates": [{"name": d.name, "size": d.stat().st_size, "path": str(d)} for d in duplicates]
+                    })
+                else:
+                    log_lines = []
+                    trashed, moved, move_err, trash_err = execute(p, duplicates, move_plan, log_lines)
+                    empty_folders_moved_list = []
+                    empty_folders_moved_count = cleanup_empty_folders_list(p, log_lines, empty_folders_moved_list)
+                    
+                    stats = {
+                        "scanned": len(all_files),
+                        "unique": len(keepers),
+                        "dupes": len(duplicates),
+                        "moved": moved,
+                        "zero": len(zero_byte),
+                        "empty_folders": empty_folders_moved_count,
+                        "errors": move_err + trash_err,
+                    }
+                    
+                    save_history(p, method, move_plan, empty_folders_moved_list, duplicates)
+                    write_log(p, log_lines, stats)
+                    
+                    self.send_json({
+                        "success": True,
+                        "stats": stats,
+                        "logs": log_lines
+                    })
+            except Exception as exc:
+                self.send_json({"error": f"Error during organization: {exc}"}, 500)
+            return
+            
+        elif path == "/api/undo":
+            target_path = params.get("path")
+            if not target_path:
+                self.send_json({"error": "Directory path is required"}, 400)
+                return
+                
+            p = Path(target_path).expanduser().resolve()
+            if not p.is_dir():
+                self.send_json({"error": f"Folder path not found: {target_path}"}, 400)
+                return
+                
+            try:
+                log_lines = []
+                success = execute_undo(p, log_lines)
+                if success:
+                    self.send_json({
+                        "success": True,
+                        "logs": log_lines
+                    })
+                else:
+                    self.send_json({"error": "Undo operation reported failure. Check logs."}, 500)
+            except Exception as exc:
+                self.send_json({"error": f"Error during undo: {exc}"}, 500)
+            return
+
+    def send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode('utf-8'))
+
+def start_gui_server(port=5000):
+    for p in range(port, port + 20):
+        try:
+            httpd = HTTPServer(('', p), GUIRequestHandler)
+            port = p
+            break
+        except OSError:
+            continue
+    else:
+        err("Could not find an open port for local GUI server.")
+        sys.exit(1)
+        
+    url = f"http://localhost:{port}"
+    ruler()
+    ok(f"Smart File Organizer GUI server online!")
+    info(f"Dashboard URL: {url}")
+    info("Press Ctrl+C in this terminal window to stop the server.")
+    ruler()
+    print()
+    
+    def open_browser():
+        webbrowser.open(url)
+    
+    threading.Timer(0.8, open_browser).start()
+    
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        ok("GUI server stopped.")
+
+
+# ──────────────────────────────────────────────────────────────
 # SECTION 14 ▸ CLI ARGUMENT PARSING
 # ──────────────────────────────────────────────────────────────
 
@@ -800,6 +1023,11 @@ Examples:
         "-c", "--config",
         help="Path to a custom JSON configuration file."
     )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the modern local Web Graphical User Interface (GUI)."
+    )
     return parser.parse_args()
 
 
@@ -812,6 +1040,10 @@ def main():
     
     # Load config (defaults to organizer_config.json in script folder if exists)
     load_config(args.config)
+    
+    if args.gui:
+        start_gui_server()
+        return
     
     # ── Resolve target folder ────────────────────────────────────────
     root = None

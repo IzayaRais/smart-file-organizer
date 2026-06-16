@@ -1,20 +1,19 @@
 @echo off
 :: ================================================================
-::  organize.bat  v3.1 — Launcher for organizer.py
+::  organize.bat  v4.0 — Launcher for organizer.py
 ::  - Checks Python is installed
 ::  - Auto-installs send2trash (Recycle Bin support)
+::  - Starts local Web GUI server or Console CLI
 ::  - Passes folder path to Python engine
-::  - Supports Organization by Type, Date, and Size
-::  - Cleans up empty folders automatically
-::  - Window stays open to show final report
+::  - Window stays open to show final report or server logs
 :: ================================================================
 setlocal EnableDelayedExpansion
-title File Organizer v3.1
+title File Organizer v4.0
 color 0A
 
 echo.
 echo  ============================================================
-echo   FILE ORGANIZER v3.1  ^|  Type/Date/Size + Cleanup + Safe
+echo   FILE ORGANIZER v4.0  ^|  Modern Web GUI + Console CLI
 echo  ============================================================
 echo.
 
@@ -64,7 +63,22 @@ if errorlevel 1 (
 )
 echo.
 
-:: ── Prompt for folder path ──────────────────────────────────────
+:: ── Choose Interface Mode ───────────────────────────────────────
+echo  Select Interface Mode:
+echo    [1] Launch Modern Web GUI (Recommended)
+echo    [2] Run Traditional Console Menu
+echo.
+set "MODE_CHOICE=1"
+set /p "MODE_CHOICE=  Choice [1/2, Default=1]: "
+
+if "!MODE_CHOICE!"=="1" (
+    echo.
+    echo  Launching local GUI server and opening dashboard...
+    python "%PY_SCRIPT%" --gui
+    exit /b 0
+)
+
+:: ── Prompt for folder path (Console Mode) ───────────────────────
 set "FOLDER=%~1"
 if "!FOLDER!"=="" (
     echo  Enter the full path of the folder to organize.

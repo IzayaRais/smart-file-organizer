@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart File Organizer v4.0</title>
+  <!-- Google Fonts Outfit & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-panel: rgba(17, 24, 39, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.3);
+      --secondary: #8b5cf6;
+      --secondary-glow: rgba(139, 92, 246, 0.3);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      
+      --gradient-primary: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      --gradient-success: linear-gradient(135deg, #059669, #10b981);
+      --gradient-warning: linear-gradient(135deg, #d97706, #f59e0b);
+      --gradient-error: linear-gradient(135deg, #dc2626, #ef4444);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 40%);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+      width: 100%;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.25rem 2rem;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      background: var(--gradient-primary);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.25rem;
+      color: #fff;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .brand-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(to right, #fff, #9ca3af);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-version {
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.25rem 0.6rem;
+      border-radius: 20px;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .server-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.08);
+      padding: 0.4rem 1rem;
+      border-radius: 20px;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--success);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      50% { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.6; }
+    }
+
+    /* ── DIRECTORY SELECTOR ── */
+    .path-section {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      gap: 1rem;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .path-input-wrapper {
+      flex-grow: 1;
+      position: relative;
+    }
+
+    .path-input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      font-size: 1rem;
+      color: #fff;
+      outline: none;
+      transition: all 0.3s;
+    }
+
+    .path-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+    }
+
+    .btn {
+      padding: 0.85rem 1.75rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.3s;
+      outline: none;
+    }
+
+    .btn-primary {
+      background: var(--gradient-primary);
+      color: #fff;
+      box-shadow: 0 4px 15px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* ── STATS GRID ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .stat-card {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+    }
+
+    .stat-card.scanned::before { background: var(--primary); }
+    .stat-card.keepers::before { background: var(--success); }
+    .stat-card.duplicates::before { background: var(--secondary); }
+    .stat-card.empty::before { background: var(--warning); }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    }
+
+    .stat-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-value {
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    /* ── SPLIT PANEL ── */
+    .main-workspace {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 1.5rem;
+      flex-grow: 1;
+    }
+
+    .control-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .panel-card {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .panel-title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
+    }
+
+    /* ── METHOD SELECTOR ── */
+    .method-options {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .method-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      transition: all 0.3s;
+    }
+
+    .method-card:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .method-card.active {
+      background: rgba(59, 130, 246, 0.08);
+      border-color: var(--primary);
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.1);
+    }
+
+    .method-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      transition: all 0.3s;
+    }
+
+    .method-card.active .method-icon {
+      background: var(--gradient-primary);
+      color: #fff;
+    }
+
+    .method-details {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .method-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .method-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* ── TOGGLE SWITCH ── */
+    .toggle-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0.9rem 1.25rem;
+    }
+
+    .toggle-label-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .toggle-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .toggle-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 26px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(255, 255, 255, 0.1);
+      transition: .3s;
+      border-radius: 34px;
+      border: 1px solid var(--border-color);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #fff;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+
+    /* ── ACTION ACTIONS ── */
+    .action-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-top: auto;
+    }
+
+    .btn-large {
+      width: 100%;
+      padding: 1.1rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      justify-content: center;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .btn-danger-outline {
+      background: rgba(239, 68, 68, 0.05);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: var(--error);
+      justify-content: center;
+    }
+
+    .btn-danger-outline:hover {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--error);
+    }
+
+    .btn-danger-outline:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      border-color: rgba(255,255,255,0.05);
+      color: var(--text-muted);
+      background: transparent;
+    }
+
+    /* ── TABS & TABLES ── */
+    .display-panel {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+
+    .tabs-header {
+      background: rgba(0, 0, 0, 0.15);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      padding: 0 1rem;
+    }
+
+    .tab-btn {
+      padding: 1.1rem 1.5rem;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+    }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+    }
+
+    .tab-content {
+      padding: 1.5rem;
+      flex-grow: 1;
+      overflow-y: auto;
+      max-height: 550px;
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* ── PREVIEW TABLE ── */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 0.9rem 1rem;
+      font-size: 0.9rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      color: var(--text-main);
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-doc { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
+    .badge-img { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2); }
+    .badge-video { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.2); }
+    .badge-audio { background: rgba(236, 72, 153, 0.12); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.2); }
+    .badge-archive { background: rgba(139, 92, 246, 0.12); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.2); }
+    .badge-code { background: rgba(20, 184, 166, 0.12); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.2); }
+    .badge-other { background: rgba(107, 114, 128, 0.12); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.2); }
+
+    .file-path-cell {
+      max-width: 250px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* ── ACTIVITY CONSOLE ── */
+    .console-wrapper {
+      background: #04060c;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #34d399;
+      height: 400px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .console-line {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .console-line.info { color: #9ca3af; }
+    .console-line.success { color: #34d399; }
+    .console-line.warn { color: #fbbf24; }
+    .console-line.error { color: #f87171; }
+    .console-line.step { color: #60a5fa; font-weight: 600; }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      color: var(--text-muted);
+      height: 300px;
+    }
+
+    .empty-icon {
+      font-size: 3rem;
+      opacity: 0.4;
+    }
+
+    /* ── UTILITY LOADER ── */
+    .loader {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* FOOTER */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-color);
+      background: rgba(0,0,0,0.1);
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- HEADER -->
+    <header>
+      <div class="brand">
+        <div class="brand-logo">F</div>
+        <h1 class="brand-title">Smart File Organizer</h1>
+        <span class="brand-version">v4.0</span>
+      </div>
+      <div class="server-status">
+        <div class="status-dot"></div>
+        <span>Local Backend Online</span>
+      </div>
+    </header>
+
+    <!-- PATH INPUT -->
+    <section class="path-section">
+      <div class="path-input-wrapper">
+        <input type="text" id="targetPath" class="path-input" placeholder="Enter absolute target directory path (e.g. C:\Users\Name\Downloads)" />
+      </div>
+      <button class="btn btn-primary" id="btnScan" onclick="scanDirectory()">
+        <span>Scan Directory</span>
+        <div class="loader" id="scanLoader"></div>
+      </button>
+    </section>
+
+    <!-- STATISTICS -->
+    <section class="stats-grid">
+      <div class="stat-card scanned">
+        <span class="stat-label">Scanned Files</span>
+        <span class="stat-value" id="statScanned">0</span>
+      </div>
+      <div class="stat-card keepers">
+        <span class="stat-label">Unique Keepers</span>
+        <span class="stat-value" id="statKeepers">0</span>
+      </div>
+      <div class="stat-card duplicates">
+        <span class="stat-label">Duplicates Found</span>
+        <span class="stat-value" id="statDuplicates">0</span>
+      </div>
+      <div class="stat-card empty">
+        <span class="stat-label">Zero-Byte Files</span>
+        <span class="stat-value" id="statEmpty">0</span>
+      </div>
+    </section>
+
+    <!-- MAIN GRID -->
+    <div class="main-workspace">
+      
+      <!-- CONTROL CENTER -->
+      <section class="control-panel">
+        
+        <div class="panel-card">
+          <h2 class="panel-title">Organization Settings</h2>
+          
+          <div class="method-options">
+            <span class="stat-label" style="font-size: 0.75rem;">Sorting Method</span>
+            
+            <div class="method-card active" data-method="type" onclick="selectMethod('type')">
+              <div class="method-icon">📁</div>
+              <div class="method-details">
+                <span class="method-name">By File Type</span>
+                <span class="method-desc">Documents, Images, Audio, Code...</span>
+              </div>
+            </div>
+
+            <div class="method-card" data-method="date" onclick="selectMethod('date')">
+              <div class="method-icon">📅</div>
+              <div class="method-details">
+                <span class="method-name">By Creation Date</span>
+                <span class="method-desc">Subfolders grouped by Year-Month</span>
+              </div>
+            </div>
+
+            <div class="method-card" data-method="size" onclick="selectMethod('size')">
+              <div class="method-icon">⚖️</div>
+              <div class="method-details">
+                <span class="method-name">By File Size</span>
+                <span class="method-desc">Small, Medium, Large, Huge</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="toggle-container">
+            <div class="toggle-label-wrapper">
+              <span class="toggle-title">Dry Run Mode</span>
+              <span class="toggle-desc">Preview without making changes</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dryRunToggle" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="action-group">
+            <button class="btn btn-primary btn-large" id="btnExecute" onclick="runOrganizer()" disabled>
+              <span id="btnExecuteText">Execute Plan</span>
+              <div class="loader" id="executeLoader" style="margin-left: 8px;"></div>
+            </button>
+            
+            <button class="btn btn-danger-outline" id="btnUndo" onclick="runUndo()" disabled>
+              <span>Undo Last Rollback</span>
+              <div class="loader" id="undoLoader" style="margin-left: 8px;"></div>
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- DISPLAY & PREVIEW PANEL -->
+      <section class="display-panel">
+        
+        <div class="tabs-header">
+          <button class="tab-btn active" onclick="switchTab('tabPreview')">Move Preview</button>
+          <button class="tab-btn" onclick="switchTab('tabDupes')">Duplicate Files</button>
+          <button class="tab-btn" onclick="switchTab('tabConsole')">Terminal Logs</button>
+        </div>
+
+        <div class="tab-content">
+          
+          <!-- MOVE PREVIEW -->
+          <div class="tab-pane active" id="tabPreview">
+            <div class="table-container">
+              <table id="previewTable">
+                <thead>
+                  <tr>
+                    <th>File Name</th>
+                    <th>Category</th>
+                    <th>Size</th>
+                    <th>Destination Path</th>
+                  </tr>
+                </thead>
+                <tbody id="previewTableBody">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+              <div class="empty-state" id="previewEmptyState">
+                <div class="empty-icon">🔍</div>
+                <h3>No analysis results loaded</h3>
+                <p>Enter a directory path above and click "Scan Directory" to preview the plan.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- DUPLICATES -->
+          <div class="tab-pane" id="tabDupes">
+            <div class="table-container">
+              <table id="dupesTable">
+                <thead>
+                  <tr>
+                    <th>Duplicate File</th>
+                    <th>Size</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody id="dupesTableBody">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+              <div class="empty-state" id="dupesEmptyState">
+                <div class="empty-icon">💎</div>
+                <h3>No duplicates detected</h3>
+                <p>Enter a directory path and scan to locate redundant duplicate files.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- TERMINAL CONSOLE -->
+          <div class="tab-pane" id="tabConsole">
+            <div class="console-wrapper" id="consoleOutput">
+              <div class="console-line info">[System] Console initialized. Ready for operations.</div>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+    </div>
+
+  </div>
+
+  <footer>
+    Smart File Organizer Engine v4.0 &bull; Local Web Dashboard Interface &bull; Zero External Dependencies
+  </footer>
+
+  <script>
+    let currentMethod = 'type';
+    let isScanning = false;
+    let isExecuting = false;
+    let isUndoing = false;
+    let scanResults = null;
+
+    // Default categories for preview badges
+    const categoriesMap = {
+      'Documents': 'badge-doc',
+      'Images': 'badge-img',
+      'Videos': 'badge-video',
+      'Audio': 'badge-audio',
+      'Archives': 'badge-archive',
+      'Code_Scripts': 'badge-code',
+      'Others': 'badge-other',
+      'Empty_Files': 'badge-other'
+    };
+
+    function selectMethod(method) {
+      if (isScanning || isExecuting) return;
+      currentMethod = method;
+      document.querySelectorAll('.method-card').forEach(card => {
+        if (card.dataset.method === method) {
+          card.classList.add('active');
+        } else {
+          card.classList.remove('active');
+        }
+      });
+      addLog(`[System] Selected organization method: ${method.toUpperCase()}`);
+      // Re-trigger analysis if we already scanned a directory
+      if (scanResults) {
+        updateActionPlan();
+      }
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      document.getElementById(tabId).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function addLog(message, type = 'info') {
+      const consoleOutput = document.getElementById('consoleOutput');
+      const time = new Date().toLocaleTimeString();
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      line.innerHTML = `<span style="color: #6b7280">[${time}]</span> <span>${message}</span>`;
+      consoleOutput.appendChild(line);
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    // ── API: SCAN ──
+    async function scanDirectory() {
+      const pathInput = document.getElementById('targetPath').value.trim();
+      if (!pathInput) {
+        alert("Please enter a valid absolute path.");
+        return;
+      }
+
+      isScanning = true;
+      document.getElementById('btnScan').disabled = true;
+      document.getElementById('scanLoader').style.display = 'block';
+      addLog(`[Scanning] Recursive folder search in progress: ${pathInput}...`, 'step');
+
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: pathInput })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          scanResults = data;
+          document.getElementById('statScanned').innerText = data.total;
+          document.getElementById('statKeepers').innerText = data.keepers_count;
+          document.getElementById('statDuplicates').innerText = data.duplicates_count;
+          document.getElementById('statEmpty').innerText = data.zero_byte_count;
+
+          addLog(`[Scan Complete] Found ${data.total} total files (${data.keepers_count} unique, ${data.duplicates_count} duplicates, ${data.zero_byte_count} zero-byte).`, 'success');
+          
+          // Check if undo history is available
+          checkUndoHistory(pathInput);
+          
+          // Build action plan
+          updateActionPlan();
+        } else {
+          addLog(`[Error] ${data.error}`, 'error');
+          alert(data.error);
+        }
+      } catch (err) {
+        addLog(`[Error] Failed to connect to server: ${err.message}`, 'error');
+        alert("Connection failed.");
+      } finally {
+        isScanning = false;
+        document.getElementById('btnScan').disabled = false;
+        document.getElementById('scanLoader').style.display = 'none';
+      }
+    }
+
+    // ── API: CHECK UNDO HISTORY ──
+    async function checkUndoHistory(path) {
+      try {
+        const response = await fetch(`/api/history?path=${encodeURIComponent(path)}`);
+        const data = await response.json();
+        const btnUndo = document.getElementById('btnUndo');
+        if (data.history_available) {
+          btnUndo.disabled = false;
+          btnUndo.title = `Restore files organized on ${data.last_run_time}`;
+          addLog(`[History] Previous organization history found from: ${data.last_run_time}. Undo is active.`, 'info');
+        } else {
+          btnUndo.disabled = true;
+          btnUndo.title = "No history log available to restore.";
+        }
+      } catch (err) {
+        document.getElementById('btnUndo').disabled = true;
+      }
+    }
+
+    // ── LOCAL ACTION PLAN PREVIEW ──
+    async function updateActionPlan() {
+      const pathInput = document.getElementById('targetPath').value.trim();
+      const dryRun = document.getElementById('dryRunToggle').checked;
+      
+      addLog(`[Plan Update] Generating sorting plan (method: ${currentMethod.toUpperCase()})...`);
+      
+      try {
+        const response = await fetch('/api/organize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: pathInput, method: currentMethod, dry_run: true })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          // Render moves table
+          const previewBody = document.getElementById('previewTableBody');
+          const previewEmpty = document.getElementById('previewEmptyState');
+          previewBody.innerHTML = '';
+
+          if (data.move_plan && data.move_plan.length > 0) {
+            previewEmpty.style.display = 'none';
+            data.move_plan.forEach(item => {
+              const tr = document.createElement('tr');
+              const badgClass = categoriesMap[item.cat] || 'badge-other';
+              tr.innerHTML = `
+                <td style="font-weight: 500;">${item.name}</td>
+                <td><span class="badge ${badgClass}">${item.cat}</span></td>
+                <td>${formatBytes(item.size)}</td>
+                <td class="file-path-cell" title="${item.dst}">${item.dst}</td>
+              `;
+              previewBody.appendChild(tr);
+            });
+          } else {
+            previewEmpty.style.display = 'flex';
+          }
+
+          // Render duplicates table
+          const dupesBody = document.getElementById('dupesTableBody');
+          const dupesEmpty = document.getElementById('dupesEmptyState');
+          dupesBody.innerHTML = '';
+
+          if (data.duplicates && data.duplicates.length > 0) {
+            dupesEmpty.style.display = 'none';
+            data.duplicates.forEach(item => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td style="font-weight: 500; color: #ef4444;">♻️ ${item.name}</td>
+                <td>${formatBytes(item.size)}</td>
+                <td class="file-path-cell" title="${item.path}">${item.path}</td>
+              `;
+              dupesBody.appendChild(tr);
+            });
+          } else {
+            dupesEmpty.style.display = 'flex';
+          }
+
+          document.getElementById('btnExecute').disabled = false;
+          addLog(`[Plan Generated] Plan compiled with ${data.move_plan.length} proposed moves. Ready to execute.`, 'info');
+        } else {
+          addLog(`[Error] Plan generation failed: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        addLog(`[Error] Failed to connect: ${err.message}`, 'error');
+      }
+    }
+
+    // ── API: EXECUTE ──
+    async function runOrganizer() {
+      const pathInput = document.getElementById('targetPath').value.trim();
+      const dryRun = document.getElementById('dryRunToggle').checked;
+
+      if (!dryRun) {
+        const confirmResult = confirm(`Warning: You are about to modify ${scanResults.total} file(s) in "${pathInput}".\n\nUnique files will be moved into folders. Duplicates will be sent to the Recycle Bin.\n\nAre you sure you want to proceed?`);
+        if (!confirmResult) return;
+      }
+
+      isExecuting = true;
+      document.getElementById('btnExecute').disabled = true;
+      document.getElementById('executeLoader').style.display = 'block';
+      
+      const modeStr = dryRun ? "DRY RUN PREVIEW" : "LIVE SORTING";
+      addLog(`[Execution] Starting ${modeStr} in ${pathInput}...`, 'step');
+
+      try {
+        const response = await fetch('/api/organize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: pathInput, method: currentMethod, dry_run: dryRun })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          // Stream execution logs to terminal
+          if (data.logs && data.logs.length > 0) {
+            data.logs.forEach(logLine => {
+              if (logLine.includes("Failed")) addLog(logLine, 'error');
+              else if (logLine.includes("Recycled") || logLine.includes("Moved")) addLog(logLine, 'success');
+              else addLog(logLine, 'info');
+            });
+          }
+
+          if (dryRun) {
+            addLog(`[Dry Run Finished] No files were affected. Toggle off "Dry Run Mode" to run live.`, 'warn');
+          } else {
+            addLog(`[Execution Finished] Success! Moved: ${data.stats.moved}, Recycled: ${data.stats.dupes}, Errors: ${data.stats.errors}.`, 'success');
+            // Reset scan status and trigger refresh
+            scanResults = null;
+            document.getElementById('statScanned').innerText = '0';
+            document.getElementById('statKeepers').innerText = '0';
+            document.getElementById('statDuplicates').innerText = '0';
+            document.getElementById('statEmpty').innerText = '0';
+            document.getElementById('previewTableBody').innerHTML = '';
+            document.getElementById('dupesTableBody').innerHTML = '';
+            document.getElementById('previewEmptyState').style.display = 'flex';
+            document.getElementById('dupesEmptyState').style.display = 'flex';
+            document.getElementById('btnExecute').disabled = true;
+            
+            // Check history again (now it should be available)
+            checkUndoHistory(pathInput);
+          }
+        } else {
+          addLog(`[Error] ${data.error}`, 'error');
+          alert(data.error);
+        }
+      } catch (err) {
+        addLog(`[Error] Connection failure: ${err.message}`, 'error');
+      } finally {
+        isExecuting = false;
+        document.getElementById('executeLoader').style.display = 'none';
+      }
+    }
+
+    // ── API: UNDO ──
+    async function runUndo() {
+      const pathInput = document.getElementById('targetPath').value.trim();
+      const confirmResult = confirm(`Rollback Request:\nThis will move all previously sorted files and folders back to their original locations.\n\nNote: Recycled duplicate files must be manually restored from your Recycle Bin if desired.\n\nDo you want to continue?`);
+      if (!confirmResult) return;
+
+      isUndoing = true;
+      document.getElementById('btnUndo').disabled = true;
+      document.getElementById('undoLoader').style.display = 'block';
+      addLog(`[Rollback] Requesting undo operations for: ${pathInput}...`, 'step');
+
+      try {
+        const response = await fetch('/api/undo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: pathInput })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          if (data.logs && data.logs.length > 0) {
+            data.logs.forEach(logLine => {
+              if (logLine.includes("Failed")) addLog(logLine, 'error');
+              else if (logLine.includes("Restored")) addLog(logLine, 'success');
+              else addLog(logLine, 'info');
+            });
+          }
+          addLog(`[Rollback Finished] Reversal complete. Original workspace folder layout restored.`, 'success');
+          checkUndoHistory(pathInput);
+        } else {
+          addLog(`[Error] Reversal failed: ${data.error}`, 'error');
+          alert(data.error);
+        }
+      } catch (err) {
+        addLog(`[Error] Connection failure: ${err.message}`, 'error');
+      } finally {
+        isUndoing = false;
+        document.getElementById('undoLoader').style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>
