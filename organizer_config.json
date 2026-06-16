@@ -1,0 +1,19 @@
+{
+  "categories": {
+    "Documents": [".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".csv", ".rtf", ".odt", ".pages"],
+    "Images": [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".bmp", ".tiff", ".ico"],
+    "Videos": [".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".webm"],
+    "Audio": [".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"],
+    "Archives": [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz"],
+    "Code_Scripts": [".py", ".js", ".html", ".css", ".json", ".xml", ".sh", ".bat", ".cmd", ".ts", ".tsx", ".jsx"]
+  },
+  "skip_names": [
+    "desktop.ini",
+    "thumbs.db",
+    "thumbs.db:encryptable",
+    "organization_log.txt",
+    ".organizer_history.json"
+  ],
+  "skip_prefixes": ["~$"],
+  "skip_fragments": [".git"]
+}

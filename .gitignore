@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+.venv/
+venv/
+
+# Environment / Configs
+.env
+
+# Testing / Temp outputs
+temp_test_organizer/
+
+# Organizer-specific logs and history
+organization_log.txt
+.organizer_history.json
+
+# OS files
+Thumbs.db
+db.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
