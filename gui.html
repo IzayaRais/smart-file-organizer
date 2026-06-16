@@ -194,9 +194,14 @@
       box-shadow: 0 4px 15px var(--primary-glow);
     }
 
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
       transform: translateY(-1px);
       box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .btn-secondary {
@@ -208,6 +213,56 @@
     .btn-secondary:hover {
       background: rgba(255, 255, 255, 0.08);
       border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* ── REAL-TIME PROGRESS BAR ── */
+    .progress-container {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      transition: all 0.3s ease;
+    }
+
+    .progress-bar-wrapper {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--gradient-primary);
+      box-shadow: 0 0 10px var(--primary);
+      border-radius: 10px;
+      transition: width 0.2s ease;
+    }
+
+    .progress-text-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .progress-status {
+      color: var(--text-muted);
+    }
+
+    .progress-percentage {
+      color: var(--primary);
+      font-weight: 700;
     }
 
     /* ── STATS GRID ── */
@@ -465,7 +520,7 @@
       justify-content: center;
     }
 
-    .btn-danger-outline:hover {
+    .btn-danger-outline:hover:not(:disabled) {
       background: rgba(239, 68, 68, 0.1);
       border-color: var(--error);
     }
@@ -700,6 +755,17 @@
       </button>
     </section>
 
+    <!-- REAL-TIME PROGRESS BAR -->
+    <section class="progress-container" id="progressContainer" style="display: none;">
+      <div class="progress-bar-wrapper">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="progress-text-wrapper">
+        <span class="progress-status" id="progressStatus">Analyzing files...</span>
+        <span class="progress-percentage" id="progressPercentage">0%</span>
+      </div>
+    </section>
+
     <!-- STATISTICS -->
     <section class="stats-grid">
       <div class="stat-card scanned">
@@ -866,6 +932,7 @@
     let isExecuting = false;
     let isUndoing = false;
     let scanResults = null;
+    let sseSource = null;
 
     // Default categories for preview badges
     const categoriesMap = {
@@ -890,7 +957,6 @@
         }
       });
       addLog(`[System] Selected organization method: ${method.toUpperCase()}`);
-      // Re-trigger analysis if we already scanned a directory
       if (scanResults) {
         updateActionPlan();
       }
@@ -926,53 +992,97 @@
       consoleOutput.scrollTop = consoleOutput.scrollHeight;
     }
 
-    // ── API: SCAN ──
-    async function scanDirectory() {
+    function showProgress(status, percent) {
+      const container = document.getElementById('progressContainer');
+      const bar = document.getElementById('progressBar');
+      const statusTxt = document.getElementById('progressStatus');
+      const percentTxt = document.getElementById('progressPercentage');
+      
+      container.style.display = 'flex';
+      bar.style.width = `${percent}%`;
+      statusTxt.innerText = status;
+      percentTxt.innerText = `${percent}%`;
+    }
+
+    function hideProgress() {
+      document.getElementById('progressContainer').style.display = 'none';
+    }
+
+    function closeSSE() {
+      if (sseSource) {
+        sseSource.close();
+        sseSource = null;
+      }
+    }
+
+    // ── API: SCAN VIA SERVER-SENT EVENTS ──
+    function scanDirectory() {
       const pathInput = document.getElementById('targetPath').value.trim();
       if (!pathInput) {
         alert("Please enter a valid absolute path.");
         return;
       }
 
+      // Reset previous states
+      closeSSE();
       isScanning = true;
       document.getElementById('btnScan').disabled = true;
       document.getElementById('scanLoader').style.display = 'block';
-      addLog(`[Scanning] Recursive folder search in progress: ${pathInput}...`, 'step');
+      showProgress("Initializing scan...", 0);
+      addLog(`[Scanning] Connecting real-time engine to: ${pathInput}...`, 'step');
 
-      try {
-        const response = await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: pathInput })
-        });
-        const data = await response.json();
+      const url = `/api/events?action=scan&path=${encodeURIComponent(pathInput)}`;
+      sseSource = new EventSource(url);
 
-        if (response.ok) {
-          scanResults = data;
-          document.getElementById('statScanned').innerText = data.total;
-          document.getElementById('statKeepers').innerText = data.keepers_count;
-          document.getElementById('statDuplicates').innerText = data.duplicates_count;
-          document.getElementById('statEmpty').innerText = data.zero_byte_count;
-
-          addLog(`[Scan Complete] Found ${data.total} total files (${data.keepers_count} unique, ${data.duplicates_count} duplicates, ${data.zero_byte_count} zero-byte).`, 'success');
-          
-          // Check if undo history is available
-          checkUndoHistory(pathInput);
-          
-          // Build action plan
-          updateActionPlan();
-        } else {
-          addLog(`[Error] ${data.error}`, 'error');
-          alert(data.error);
+      sseSource.addEventListener('log', (event) => {
+        const data = JSON.parse(event.data);
+        addLog(data.message, 'info');
+        if (data.message.includes("Hashing")) {
+          showProgress("Computing file SHA-256 hashes...", 5);
         }
-      } catch (err) {
-        addLog(`[Error] Failed to connect to server: ${err.message}`, 'error');
-        alert("Connection failed.");
-      } finally {
+      });
+
+      sseSource.addEventListener('progress', (event) => {
+        const data = JSON.parse(event.data);
+        const percent = Math.round((data.current / data.total) * 100);
+        showProgress(`Hashing files (${data.current}/${data.total})...`, percent);
+      });
+
+      sseSource.addEventListener('done', (event) => {
+        const data = JSON.parse(event.data);
+        scanResults = data;
+        document.getElementById('statScanned').innerText = data.total;
+        document.getElementById('statKeepers').innerText = data.keepers_count;
+        document.getElementById('statDuplicates').innerText = data.duplicates_count;
+        document.getElementById('statEmpty').innerText = data.zero_byte_count;
+
+        addLog(`[Scan Complete] Found ${data.total} files. Unique: ${data.keepers_count}, Duplicates: ${data.duplicates_count}.`, 'success');
+        
+        hideProgress();
         isScanning = false;
         document.getElementById('btnScan').disabled = false;
         document.getElementById('scanLoader').style.display = 'none';
-      }
+        closeSSE();
+
+        checkUndoHistory(pathInput);
+        updateActionPlan();
+      });
+
+      sseSource.addEventListener('error', (event) => {
+        let msg = "Scan failed.";
+        try {
+          const data = JSON.parse(event.data);
+          msg = data.message || msg;
+        } catch(e) {}
+        addLog(`[Error] ${msg}`, 'error');
+        alert(msg);
+        
+        hideProgress();
+        isScanning = false;
+        document.getElementById('btnScan').disabled = false;
+        document.getElementById('scanLoader').style.display = 'none';
+        closeSSE();
+      });
     }
 
     // ── API: CHECK UNDO HISTORY ──
@@ -994,11 +1104,9 @@
       }
     }
 
-    // ── LOCAL ACTION PLAN PREVIEW ──
+    // ── API: GET PREVIEW ACTION PLAN ──
     async function updateActionPlan() {
       const pathInput = document.getElementById('targetPath').value.trim();
-      const dryRun = document.getElementById('dryRunToggle').checked;
-      
       addLog(`[Plan Update] Generating sorting plan (method: ${currentMethod.toUpperCase()})...`);
       
       try {
@@ -1062,73 +1170,91 @@
       }
     }
 
-    // ── API: EXECUTE ──
-    async function runOrganizer() {
+    // ── API: RUN ORGANIZATION VIA SERVER-SENT EVENTS ──
+    function runOrganizer() {
       const pathInput = document.getElementById('targetPath').value.trim();
       const dryRun = document.getElementById('dryRunToggle').checked;
 
       if (!dryRun) {
-        const confirmResult = confirm(`Warning: You are about to modify ${scanResults.total} file(s) in "${pathInput}".\n\nUnique files will be moved into folders. Duplicates will be sent to the Recycle Bin.\n\nAre you sure you want to proceed?`);
+        const confirmResult = confirm(`Warning: You are about to modify files in "${pathInput}".\n\nUnique files will be moved into folders. Duplicates will be sent to the Recycle Bin.\n\nAre you sure you want to proceed?`);
         if (!confirmResult) return;
       }
 
+      closeSSE();
       isExecuting = true;
       document.getElementById('btnExecute').disabled = true;
       document.getElementById('executeLoader').style.display = 'block';
+      showProgress("Preparing organization...", 0);
       
       const modeStr = dryRun ? "DRY RUN PREVIEW" : "LIVE SORTING";
-      addLog(`[Execution] Starting ${modeStr} in ${pathInput}...`, 'step');
+      addLog(`[Execution] Connecting real-time stream for: ${modeStr}...`, 'step');
 
-      try {
-        const response = await fetch('/api/organize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: pathInput, method: currentMethod, dry_run: dryRun })
-        });
-        const data = await response.json();
+      const url = `/api/events?action=organize&path=${encodeURIComponent(pathInput)}&method=${currentMethod}&dry_run=${dryRun}`;
+      sseSource = new EventSource(url);
 
-        if (response.ok) {
-          // Stream execution logs to terminal
-          if (data.logs && data.logs.length > 0) {
-            data.logs.forEach(logLine => {
-              if (logLine.includes("Failed")) addLog(logLine, 'error');
-              else if (logLine.includes("Recycled") || logLine.includes("Moved")) addLog(logLine, 'success');
-              else addLog(logLine, 'info');
-            });
-          }
+      sseSource.addEventListener('log', (event) => {
+        const data = JSON.parse(event.data);
+        if (data.message.includes("Failed")) addLog(data.message, 'error');
+        else if (data.message.includes("Recycled") || data.message.includes("Moved")) addLog(data.message, 'success');
+        else addLog(data.message, 'info');
+      });
 
-          if (dryRun) {
-            addLog(`[Dry Run Finished] No files were affected. Toggle off "Dry Run Mode" to run live.`, 'warn');
-          } else {
-            addLog(`[Execution Finished] Success! Moved: ${data.stats.moved}, Recycled: ${data.stats.dupes}, Errors: ${data.stats.errors}.`, 'success');
-            // Reset scan status and trigger refresh
-            scanResults = null;
-            document.getElementById('statScanned').innerText = '0';
-            document.getElementById('statKeepers').innerText = '0';
-            document.getElementById('statDuplicates').innerText = '0';
-            document.getElementById('statEmpty').innerText = '0';
-            document.getElementById('previewTableBody').innerHTML = '';
-            document.getElementById('dupesTableBody').innerHTML = '';
-            document.getElementById('previewEmptyState').style.display = 'flex';
-            document.getElementById('dupesEmptyState').style.display = 'flex';
-            document.getElementById('btnExecute').disabled = true;
-            
-            // Check history again (now it should be available)
-            checkUndoHistory(pathInput);
-          }
-        } else {
-          addLog(`[Error] ${data.error}`, 'error');
-          alert(data.error);
-        }
-      } catch (err) {
-        addLog(`[Error] Connection failure: ${err.message}`, 'error');
-      } finally {
+      sseSource.addEventListener('progress', (event) => {
+        const data = JSON.parse(event.data);
+        const percent = Math.round((data.current / data.total) * 100);
+        showProgress(`Analyzing duplicates (${data.current}/${data.total})...`, percent);
+      });
+
+      sseSource.addEventListener('done', (event) => {
+        const data = JSON.parse(event.data);
+        
+        hideProgress();
         isExecuting = false;
         document.getElementById('executeLoader').style.display = 'none';
-      }
+        closeSSE();
+
+        if (dryRun) {
+          addLog(`[Dry Run Finished] No files were affected. Toggle off "Dry Run Mode" to run live.`, 'warn');
+          // Injected from direct event Done
+          if (data.move_plan) {
+            updateActionPlan();
+          }
+        } else {
+          addLog(`[Execution Finished] Success! Moved: ${data.stats.moved}, Recycled: ${data.stats.dupes}, Errors: ${data.stats.errors}.`, 'success');
+          
+          // Reset status
+          scanResults = null;
+          document.getElementById('statScanned').innerText = '0';
+          document.getElementById('statKeepers').innerText = '0';
+          document.getElementById('statDuplicates').innerText = '0';
+          document.getElementById('statEmpty').innerText = '0';
+          document.getElementById('previewTableBody').innerHTML = '';
+          document.getElementById('dupesTableBody').innerHTML = '';
+          document.getElementById('previewEmptyState').style.display = 'flex';
+          document.getElementById('dupesEmptyState').style.display = 'flex';
+          document.getElementById('btnExecute').disabled = true;
+          
+          checkUndoHistory(pathInput);
+        }
+      });
+
+      sseSource.addEventListener('error', (event) => {
+        let msg = "Organization failed.";
+        try {
+          const data = JSON.parse(event.data);
+          msg = data.message || msg;
+        } catch(e) {}
+        addLog(`[Error] ${msg}`, 'error');
+        alert(msg);
+
+        hideProgress();
+        isExecuting = false;
+        document.getElementById('executeLoader').style.display = 'none';
+        closeSSE();
+      });
     }
 
-    // ── API: UNDO ──
+    // ── API: UNDO VIA AJAX ──
     async function runUndo() {
       const pathInput = document.getElementById('targetPath').value.trim();
       const confirmResult = confirm(`Rollback Request:\nThis will move all previously sorted files and folders back to their original locations.\n\nNote: Recycled duplicate files must be manually restored from your Recycle Bin if desired.\n\nDo you want to continue?`);
@@ -1137,6 +1263,7 @@
       isUndoing = true;
       document.getElementById('btnUndo').disabled = true;
       document.getElementById('undoLoader').style.display = 'block';
+      showProgress("Undoing operations...", 20);
       addLog(`[Rollback] Requesting undo operations for: ${pathInput}...`, 'step');
 
       try {
@@ -1148,6 +1275,7 @@
         const data = await response.json();
 
         if (response.ok) {
+          showProgress("Reversing moves...", 70);
           if (data.logs && data.logs.length > 0) {
             data.logs.forEach(logLine => {
               if (logLine.includes("Failed")) addLog(logLine, 'error');
@@ -1155,14 +1283,18 @@
               else addLog(logLine, 'info');
             });
           }
+          showProgress("Rollback complete!", 100);
+          setTimeout(hideProgress, 1500);
           addLog(`[Rollback Finished] Reversal complete. Original workspace folder layout restored.`, 'success');
           checkUndoHistory(pathInput);
         } else {
           addLog(`[Error] Reversal failed: ${data.error}`, 'error');
           alert(data.error);
+          hideProgress();
         }
       } catch (err) {
         addLog(`[Error] Connection failure: ${err.message}`, 'error');
+        hideProgress();
       } finally {
         isUndoing = false;
         document.getElementById('undoLoader').style.display = 'none';

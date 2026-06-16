@@ -778,9 +778,39 @@ def write_log(root: Path, log_lines: list, stats: dict):
         warn(f"Could not write log: {exc}")
 
 
-# ──────────────────────────────────────────────────────────────
 # SECTION 13.5 ▸ LOCAL WEB GUI SERVER
 # ──────────────────────────────────────────────────────────────
+
+def detect_duplicates_for_events(files: list, send_event_fn):
+    zero_byte = [f for f in files if f.stat().st_size == 0]
+    hashable  = [f for f in files if f.stat().st_size  > 0]
+
+    hash_to_keeper: dict = {}
+    duplicates: list = []
+    total = len(hashable)
+
+    for i, path in enumerate(hashable, 1):
+        digest = sha256(path)
+        if digest is None:
+            continue
+
+        if digest in hash_to_keeper:
+            existing = hash_to_keeper[digest]
+            if path.stat().st_ctime < existing.stat().st_ctime:
+                duplicates.append(existing)
+                hash_to_keeper[digest] = path
+            else:
+                duplicates.append(path)
+        else:
+            hash_to_keeper[digest] = path
+            
+        if i % 5 == 0 or i == total:
+            # Send progress event (throttle to prevent event flooding)
+            if not send_event_fn("progress", current=i, total=total):
+                break
+
+    keepers = list(hash_to_keeper.values())
+    return keepers, duplicates, zero_byte
 
 class GUIRequestHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -802,6 +832,125 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                     self.wfile.write(f.read())
             else:
                 self.send_error(404, "gui.html file not found next to organizer.py")
+            return
+            
+        elif path == "/api/events":
+            action = query.get("action", [""])[0]
+            target_path = query.get("path", [""])[0]
+            method = query.get("method", ["type"])[0]
+            dry_run = query.get("dry_run", ["true"])[0].lower() == "true"
+            
+            if not target_path:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"Path parameter is missing")
+                return
+                
+            p = Path(target_path).expanduser().resolve()
+            if not p.is_dir():
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(f"Folder path not found: {target_path}".encode('utf-8'))
+                return
+                
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+            
+            def send_event(event_type, **kwargs):
+                data = {"type": event_type}
+                data.update(kwargs)
+                try:
+                    self.wfile.write(f"data: {json.dumps(data)}\n\n".encode('utf-8'))
+                    self.wfile.flush()
+                except Exception:
+                    return False
+                return True
+
+            if action == "scan":
+                try:
+                    send_event("log", message=f"Starting recursive search in: {p}")
+                    all_files = collect_files(p)
+                    send_event("log", message=f"Found {len(all_files)} files. Starting duplicate checks...")
+                    keepers, duplicates, zero_byte = detect_duplicates_for_events(all_files, send_event)
+                    
+                    send_event("done", 
+                               total=len(all_files), 
+                               keepers_count=len(keepers), 
+                               duplicates_count=len(duplicates), 
+                               zero_byte_count=len(zero_byte))
+                except Exception as exc:
+                    send_event("error", message=str(exc))
+                    
+            elif action == "organize":
+                try:
+                    send_event("log", message=f"Analyzing files in: {p}")
+                    all_files = collect_files(p)
+                    send_event("log", message=f"Hashing files to find keepers and duplicates...")
+                    keepers, duplicates, zero_byte = detect_duplicates_for_events(all_files, send_event)
+                    
+                    move_plan = build_move_plan(keepers, zero_byte, p, method)
+                    
+                    if dry_run:
+                        send_event("log", message=f"Dry run complete. Move plan compiled with {len(move_plan)} entries.")
+                        send_event("done", 
+                                   move_plan=[{"name": m["src"].name, "cat": m["cat"], "size": m["src"].stat().st_size, "dst": str(m["dst"])} for m in move_plan],
+                                   duplicates=[{"name": d.name, "size": d.stat().st_size, "path": str(d)} for d in duplicates])
+                    else:
+                        log_lines = []
+                        trashed_ok = trash_err = moved_ok = move_err = 0
+                        
+                        if duplicates:
+                            send_event("log", message=f"Sending {len(duplicates)} duplicate(s) to Recycle Bin...")
+                            for d in duplicates:
+                                if recycle(d):
+                                    send_event("log", message=f"Recycled duplicate: {d.name}")
+                                    log_lines += [f"  FILE : {d}", f"  ACTION: Sent to Recycle Bin", "  ---"]
+                                    trashed_ok += 1
+                                else:
+                                    log_lines.append(f"  FAILED TO RECYCLE: {d}")
+                                    trash_err += 1
+                                    
+                        send_event("log", message=f"Moving {len(move_plan)} unique file(s) into category folders...")
+                        for m in move_plan:
+                            m["dst"].parent.mkdir(parents=True, exist_ok=True)
+                            src = m["src"]
+                            dst = m["dst"]
+                            try:
+                                shutil.move(str(src), str(dst))
+                                renamed = dst.name != src.name
+                                note = f" (renamed -> {dst.name})" if renamed else ""
+                                send_event("log", message=f"[{m['cat']}] Moved: {src.name}{note}")
+                                log_lines += [f"  FROM: {src}", f"  TO  : {dst}", "  ---"]
+                                moved_ok += 1
+                            except Exception as exc:
+                                send_event("log", message=f"Failed: {src.name}: {exc}")
+                                log_lines.append(f"  FAILED: {src}  ({exc})")
+                                move_err += 1
+                                
+                        empty_folders_moved_list = []
+                        empty_folders_moved_count = cleanup_empty_folders_list(p, log_lines, empty_folders_moved_list)
+                        if empty_folders_moved_count > 0:
+                            send_event("log", message=f"Cleaned up {empty_folders_moved_count} empty subfolder(s).")
+                            
+                        stats = {
+                            "scanned": len(all_files),
+                            "unique": len(keepers),
+                            "dupes": len(duplicates),
+                            "moved": moved_ok,
+                            "zero": len(zero_byte),
+                            "empty_folders": empty_folders_moved_count,
+                            "errors": move_err + trash_err,
+                        }
+                        
+                        save_history(p, method, move_plan, empty_folders_moved_list, duplicates)
+                        write_log(p, log_lines, stats)
+                        
+                        send_event("done", stats=stats, logs=log_lines)
+                except Exception as exc:
+                    send_event("error", message=str(exc))
             return
             
         elif path == "/api/history":
